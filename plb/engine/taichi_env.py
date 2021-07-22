@@ -5,6 +5,7 @@ import taichi as ti
 # TODO: run on GPU, fast_math will cause error on float64's sqrt; removing it cuases compile error..
 ti.init(arch=ti.gpu, debug=False, fast_math=True)
 
+
 @ti.data_oriented
 class TaichiEnv:
     def __init__(self, cfg, nn=False, loss=True):
@@ -41,7 +42,7 @@ class TaichiEnv:
         self._is_copy = True
 
     def set_copy(self, is_copy: bool):
-        self._is_copy= is_copy
+        self._is_copy = is_copy
 
     def initialize(self):
         # initialize all taichi variable according to configurations..
@@ -50,7 +51,8 @@ class TaichiEnv:
         self.renderer.initialize()
         if self.loss:
             self.loss.initialize()
-            self.renderer.set_target_density(self.loss.target_density.to_numpy()/self.simulator.p_mass)
+            self.renderer.set_target_density(
+                self.loss.target_density.to_numpy()/self.simulator.p_mass)
 
         # call set_state instead of reset..
         self.simulator.reset(self.init_particles)
@@ -80,13 +82,13 @@ class TaichiEnv:
             action = np.array(action)
         self.simulator.step(is_copy=self._is_copy, action=action)
 
-    def compute_loss(self):
+    def compute_loss(self, requires_grad):
         assert self.loss is not None
         if self._is_copy:
             self.loss.clear()
             return self.loss.compute_loss(0)
         else:
-            return self.loss.compute_loss(self.simulator.cur)
+            return self.loss.compute_loss(self.simulator.cur, requires_grad)
 
     def get_state(self):
         assert self.simulator.cur == 0

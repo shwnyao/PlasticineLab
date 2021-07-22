@@ -3,9 +3,10 @@ import os
 import numpy as np
 from ..mpm_simulator import MPMSimulator
 
+
 @ti.data_oriented
 class Loss:
-    def __init__(self, cfg, sim:MPMSimulator):
+    def __init__(self, cfg, sim: MPMSimulator):
         self.cfg = cfg
         dtype = self.dtype = sim.dtype
         self.res = sim.res
@@ -20,17 +21,19 @@ class Loss:
         self.primitives = []
         for i in range(len(sim.primitives)):
             primitive = sim.primitives[i]
-            if primitive.action_dim > 0: # only consider the moveable one
+            if primitive.action_dim > 0:  # only consider the moveable one
                 self.primitives.append(primitive)
 
         self.compute_grid_mass = sim.compute_grid_m_kernel
 
-        #----------------------------------------
+        # ----------------------------------------
         self.target_density = ti.field(dtype=dtype, shape=self.res)
         self.target_sdf = ti.field(dtype=dtype, shape=self.res)
-        self.nearest_point = ti.Vector.field(self.dim, dtype=dtype, shape=self.res)
+        self.nearest_point = ti.Vector.field(
+            self.dim, dtype=dtype, shape=self.res)
         self.target_sdf_copy = ti.field(dtype=dtype, shape=self.res)
-        self.nearest_point_copy = ti.Vector.field(self.dim, dtype=dtype, shape=self.res)
+        self.nearest_point_copy = ti.Vector.field(
+            self.dim, dtype=dtype, shape=self.res)
         self.inf = 1000
 
         self.sdf_loss = ti.field(dtype=dtype, shape=(), needs_grad=True)
@@ -46,7 +49,8 @@ class Loss:
     def load_target_density(self, path=None, grids=None):
         if path is not None or grids is not None:
             if path is not None and len(path) > 0:
-                grids = np.load(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../', path))
+                grids = np.load(os.path.join(os.path.dirname(
+                    os.path.abspath(__file__)), '../../', path))
             else:
                 grids = np.array(grids)
             self.target_density.from_numpy(grids)
@@ -83,7 +87,7 @@ class Loss:
         for I in ti.grouped(self.target_sdf):
             self.target_sdf[I] = self.inf
             grid_pos = ti.cast(I * self.dx, self.dtype)
-            if self.target_density[I] > 1e-4: #TODO: make it configurable
+            if self.target_density[I] > 1e-4:  # TODO: make it configurable
                 self.target_sdf[I] = 0.
                 self.nearest_point[I] = grid_pos
             else:
@@ -118,7 +122,8 @@ class Loss:
         for i in range(self.n_particles):
             for primitive in ti.static(self.primitives):
                 d_ij = max(primitive.sdf(f, self.particle_x[f, i]), 0.)
-                ti.atomic_add(primitive.dist_norm[None], self.soft_weight(d_ij))
+                ti.atomic_add(
+                    primitive.dist_norm[None], self.soft_weight(d_ij))
 
     @ti.kernel
     def compute_contact_distance_kernel(self, f: ti.i32):
@@ -132,7 +137,8 @@ class Loss:
         for i in range(self.n_particles):
             for primitive in ti.static(self.primitives):
                 d_ij = max(primitive.sdf(f, self.particle_x[f, i]), 0.)
-                ti.atomic_add(primitive.min_dist[None], d_ij * self.soft_weight(d_ij)/primitive.dist_norm[None])
+                ti.atomic_add(
+                    primitive.min_dist[None], d_ij * self.soft_weight(d_ij)/primitive.dist_norm[None])
 
     @ti.kernel
     def compute_contact_loss_kernel(self):
@@ -145,7 +151,8 @@ class Loss:
     @ti.kernel
     def compute_density_loss_kernel(self):
         for I in ti.grouped(self.grid_mass):
-            self.density_loss[None] += ti.abs(self.grid_mass[I] - self.target_density[I])
+            self.density_loss[None] += ti.abs(self.grid_mass[I] -
+                                              self.target_density[I])
 
     @ti.kernel
     def compute_sdf_loss_kernel(self):
@@ -173,11 +180,10 @@ class Loss:
 
         for p in ti.static(self.primitives):
             #p.min_dist[None] = 1000000
-            p.min_dist[None] = 0 # only for softmin
+            p.min_dist[None] = 0  # only for softmin
             p.min_dist.grad[None] = 0
             p.dist_norm[None] = 0
             p.dist_norm.grad[None] = 0
-
 
     @ti.kernel
     def clear_loss(self):
@@ -190,7 +196,7 @@ class Loss:
             for p in self.primitives:
                 p.min_dist[None] = 100000
 
-        #clear and compute grid mss(f)
+        # clear and compute grid mss(f)
         self.grid_mass.fill(0)
         self.compute_grid_mass(f)
 
@@ -216,7 +222,7 @@ class Loss:
 
         self.sum_up_loss_kernel.grad()
 
-        if len(self.primitives)>0:
+        if len(self.primitives) > 0:
             if self.soft_contact_loss:
                 self.compute_contact_distance_normalize(f)
                 self.compute_soft_contact_distance_kernel(f)
@@ -231,13 +237,13 @@ class Loss:
 
         self.grid_mass.fill(0.)
         self.grid_mass.grad.fill(0.)
-        self.compute_grid_mass(f) # get the grid mass tensor...
+        self.compute_grid_mass(f)  # get the grid mass tensor...
         self.compute_sdf_loss_kernel.grad()
         self.compute_density_loss_kernel.grad()
-        self.compute_grid_mass.grad(f) # back to the particles..
+        self.compute_grid_mass.grad(f)  # back to the particles..
 
     @ti.kernel
-    def iou_kernel(self)->ti.float64:
+    def iou_kernel(self) -> ti.float64:
         ma = ti.cast(0., self.dtype)
         mb = ti.cast(0., self.dtype)
         I = ti.cast(0., self.dtype)
@@ -246,7 +252,7 @@ class Loss:
         for i in ti.grouped(self.grid_mass):
             ti.atomic_max(ma, self.grid_mass[i])
             ti.atomic_max(mb, self.target_density[i])
-            I += self.grid_mass[i]  * self.target_density[i]
+            I += self.grid_mass[i] * self.target_density[i]
             Ua += self.grid_mass[i]
             Ub += self.target_density[i]
         I = I/ma/mb
@@ -266,8 +272,11 @@ class Loss:
         # no grad
         pass
 
-    def _extract_loss(self, f):
+    def _extract_loss(self, f, requires_grad=False):
         self.compute_loss_kernel(f)
+        if requires_grad:
+            self.loss.grad[None] = 1
+            self.compute_loss_kernal_grad(f)
         self.iou()
         return {
             'loss': self.loss[None],
@@ -283,15 +292,17 @@ class Loss:
         loss_info = self._extract_loss(0)
         self._start_loss = loss_info['loss']
         self._init_iou = loss_info['iou']
-        self._last_loss = 0 # in optim, loss will be clear after ti.Tape; for RL; we reset loss to zero in each step.
+        # in optim, loss will be cleared after ti.Tape; for RL; we reset loss to zero in each step.
+        self._last_loss = 0
 
-    def compute_loss(self, f):
-        loss_info = self._extract_loss(f)
+    def compute_loss(self, f, requires_grad=False):
+        loss_info = self._extract_loss(f, requires_grad)
         r = self._start_loss - (loss_info['loss'] - self._last_loss)
         cur_step_loss = loss_info['loss'] - self._last_loss
         self._last_loss = loss_info['loss']
 
-        incremental_iou = max(min((loss_info['iou']-self._init_iou)/(loss_info['target_iou'] - self._init_iou), 1), 0)
+        incremental_iou = max(min(
+            (loss_info['iou']-self._init_iou)/(loss_info['target_iou'] - self._init_iou), 1), 0)
         loss_info['reward'] = r
         loss_info['incremental_iou'] = incremental_iou
         loss_info['loss'] = cur_step_loss

@@ -55,17 +55,24 @@ class SolverTorchNN:
             taichi_env = self.env.unwrapped.taichi_env
             actions = []
             obs = self.env.reset()
-            with ti.Tape(loss=taichi_env.loss.loss):
-                for i in range(self.cfg.horizon):
-                    state_tensor = torch.as_tensor(obs).to(self.device)
-                    action_var = self.nn(state_tensor)
-                    actions.append(action_var)
-                    action_np = action_var.data.cpu().numpy()
-                    obs, reward, done, loss_info = self.env.step(action_np)
-                    self.total_steps += 1
-                    if self.logger is not None:
-                        self.logger.step(
-                            None, None, reward, None, i == self.cfg.horizon-1, loss_info)
+            # TODO: replace ti.Tape with kernal.grad, test if error goes away
+
+            # to set is_copy=False
+            taichi_env.set_state(sim_state, self.cfg.softness, False)
+
+            # with ti.Tape(loss=taichi_env.loss.loss):
+            for i in range(self.cfg.horizon):
+                state_tensor = torch.as_tensor(obs).to(self.device)
+                action_var = self.nn(state_tensor)
+                actions.append(action_var)
+                action_np = action_var.data.cpu().numpy()
+                obs, reward, done, loss_info = self.env.step(
+                    action_np, requires_grad=True)
+                self.total_steps += 1
+                if self.logger is not None:
+                    self.logger.step(
+                        None, None, reward, None, i == self.cfg.horizon-1, loss_info)
+
             loss = taichi_env.loss.loss[None]
 
             grads = taichi_env.primitives.get_grad(self.cfg.horizon)
@@ -91,15 +98,6 @@ class SolverTorchNN:
 
         self.env.reset()
         return best_actions
-
-    @staticmethod
-    def init_actions(env, cfg):
-        action_dim = env.primitives.action_dim
-        horizon = cfg.horizon
-        if cfg.init_sampler == 'uniform':
-            return np.random.uniform(-cfg.init_range, cfg.init_range, size=(horizon, action_dim))
-        else:
-            raise NotImplementedError
 
     @classmethod
     def default_config(cls):
