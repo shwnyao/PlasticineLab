@@ -1,4 +1,6 @@
 from .solver import *
+from plb.algorithms.logger import Logger
+
 
 class SolverNN:
     def __init__(self, env: TaichiEnv, logger, cfg=None, **kwargs):
@@ -15,7 +17,7 @@ class SolverNN:
         env = self.env
         assert hasattr(env, 'nn'), "nn must be an element of env .."
 
-        nn = env.nn # assume that nn has been initialized.. nn.initialize
+        nn = env.nn  # assume that nn has been initialized.. nn.initialize
 
         # initialize ...
         params = nn.get_params()
@@ -38,7 +40,8 @@ class SolverNN:
                     env.step()
                     self.total_steps += 1
                     loss_info = env.compute_loss()
-                    self.logger.step(None, None, loss_info['reward'], None, (i==self.horizon-1), loss_info)
+                    self.logger.step(
+                        None, None, loss_info['reward'], None, (i == self.horizon-1), loss_info)
             loss = env.loss.loss[None]
             return loss, env.nn.get_grad()
 
@@ -48,6 +51,7 @@ class SolverNN:
         for iter in range(self.cfg.n_iters):
             self.params = params
             loss, grad = forward(env_state['state'], params)
+            self.logger.summary_writer.writer.add_histogram('grad', grad, iter)
             if loss < best_loss:
                 best_loss = loss
                 best_action = params.copy()
@@ -70,11 +74,17 @@ class SolverNN:
         cfg.init_sampler = 'uniform'
         return cfg
 
+
 def solve_nn(env, path, logger, args):
-    import os, cv2
+    import os
+    import cv2
+    import imageio
     import torch
     from torch import nn
+    exp_name = f'nn_{args.env_name}'
+    path = f'data/{exp_name}/{exp_name}_s{args.seed}'
     os.makedirs(path, exist_ok=True)
+    logger = Logger(path)
 
     class MLP(nn.Module):
         def __init__(self, inp_dim, oup_dim):
@@ -104,7 +114,6 @@ def solve_nn(env, path, logger, args):
                       n_iters=(args.num_steps + T-1)//T, softness=args.softness, horizon=T,
                       **{"optim.lr": args.lr, "optim.type": args.optim, "init_range": 0.0001})
 
-
     nn = taichi_env.nn
     nn.set_params(params)
     p2 = nn.get_params()
@@ -116,8 +125,10 @@ def solve_nn(env, path, logger, args):
     os.makedirs(path, exist_ok=True)
     taichi_env.set_copy(True)
 
-    for idx in range(50):
-        nn.set_action(0, taichi_env.simulator.substeps)
-        taichi_env.step(None)
-        img = taichi_env.render(mode='rgb_array')
-        cv2.imwrite(f"{path}/{idx:04d}.png", img)
+    with imageio.get_writer(f"{path}/output.gif", mode="I") as writer:
+        for idx in range(50):
+            nn.set_action(0, taichi_env.simulator.substeps)
+            taichi_env.step(None)
+            img = taichi_env.render(mode='rgb_array')
+            img = cv2.resize(img, (0, 0), fx=0.5, fy=0.5)
+            writer.append_data(img)
