@@ -11,7 +11,7 @@ from plb.algorithms.discor.run_sac import train as train_sac
 from plb.algorithms.ppo.run_ppo import train_ppo
 from plb.algorithms.TD3.run_td3 import train_td3
 from plb.optimizer.solver import solve_action
-from plb.optimizer.solver_nn import solve_nn
+from plb.optimizer.solver_taichi_nn import solve_taichi_nn
 
 RL_ALGOS = ['sac', 'td3', 'ppo']
 DIFF_ALGOS = ['action', 'taichi_nn']
@@ -77,7 +77,7 @@ def main():
     elif args.algo == 'td3':
         train_td3(env, args.path, logger, args)
     elif args.algo == 'taichi_nn':
-        solve_nn(env, taichi_nn, args)
+        solve_taichi_nn(env, taichi_nn, args)
     else:
         raise NotImplementedError
 

@@ -1,9 +1,7 @@
 from .solver import *
 
-# from plb.engine.nn.mlp import MLP
 
-
-class SolverNN:
+class SolverTaichiNN:
     def __init__(self, env: TaichiEnv, nn, logger, cfg=None, **kwargs):
         self.cfg = make_cls_config(self, cfg, **kwargs)
         self.cfg.optim.lr *= 0.001
@@ -13,8 +11,6 @@ class SolverNN:
         self.optim_cfg = self.cfg.optim
         self.horizon = self.cfg.horizon
         self.env = env
-        # self.nn = MLP(self.env.simulator, self.env.primitives,
-        #               (256, 256), activation='relu')
         self.nn = nn
 
     def solve(self, callbacks=()):
@@ -81,7 +77,7 @@ class SolverNN:
         return cfg
 
 
-def solve_nn(env, taichi_nn, args):
+def solve_taichi_nn(env, taichi_nn, args):
     import os
     import cv2
     import imageio
@@ -118,9 +114,9 @@ def solve_nn(env, taichi_nn, args):
     env.reset()
 
     taichi_env = env.unwrapped.taichi_env
-    solver = SolverNN(taichi_env, taichi_nn, logger, None,
-                      n_iters=(args.num_steps + T-1)//T, softness=args.softness, horizon=T,
-                      **{"optim.lr": args.lr, "optim.type": args.optim, "init_range": 0.0001})
+    solver = SolverTaichiNN(taichi_env, taichi_nn, logger, None,
+                            n_iters=(args.num_steps + T-1)//T, softness=args.softness, horizon=T,
+                            **{"optim.lr": args.lr, "optim.type": args.optim, "init_range": 0.0001})
 
     nn = taichi_nn
     nn.set_params(params)
