@@ -45,8 +45,9 @@ def tune_taichi_nn():
     for env_name in ['Move-v1']:
         args.env_name = env_name
 
-        for af in ['Tanh', 'LeakyReLU']:
-            for seed in [0, 10, 20]:
+        for af in ['ReLU']:
+            for seed in [0]:
+                args.af = af
                 args.seed = seed
                 set_random_seed(seed)
 
@@ -54,7 +55,7 @@ def tune_taichi_nn():
 
                 taichi_env = env.unwrapped.taichi_env
                 taichi_nn = MLP(taichi_env.simulator, taichi_env.primitives,
-                                (256, 256), activation='relu')
+                                (256, 256), activation=af)
 
                 env.initialize(seed, sdf_loss=args.sdf_loss, density_loss=args.density_loss,
                                contact_loss=args.contact_loss, is_soft_contact=args.soft_contact_loss)

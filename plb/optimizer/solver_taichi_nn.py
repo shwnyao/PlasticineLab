@@ -79,10 +79,11 @@ def solve_taichi_nn(env, taichi_nn, args):
     import torch
     from torch import nn
 
-    exp_name = f'taichi-nn_{args.env_name}'
+    T = env._max_episode_steps
+    exp_name = f'taichi-nn_{args.env_name}_horizon-{T}_af-{args.af}'
     path = f'data/{exp_name}/{exp_name}_s{args.seed}'
     os.makedirs(path, exist_ok=True)
-    logger = Logger(path)
+    logger = Logger(path, exp_name)
 
     class MLP(nn.Module):
         def __init__(self, inp_dim, oup_dim):
@@ -96,7 +97,6 @@ def solve_taichi_nn(env, taichi_nn, args):
             x = torch.relu(self.l2(x))
             return self.l3(x)
 
-    T = env._max_episode_steps
     mlp = MLP(
         env.unwrapped.observation_space.shape[0], env.unwrapped.action_space.shape[0])
 
@@ -110,7 +110,8 @@ def solve_taichi_nn(env, taichi_nn, args):
 
     taichi_env = env.unwrapped.taichi_env
     solver = SolverTaichiNN(taichi_env, taichi_nn, logger, None,
-                            n_iters=(args.num_steps + T-1)//T, softness=args.softness, horizon=T,
+                            n_iters=200,
+                            softness=args.softness, horizon=T,
                             **{"optim.lr": args.lr, "optim.type": args.optim, "init_range": 0.0001})
 
     nn = taichi_nn

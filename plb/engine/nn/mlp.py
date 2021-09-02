@@ -19,7 +19,7 @@ class MLP:
                  simulator: MPMSimulator,
                  primitives: Primitives,
                  hidden_dims: Tuple[int, ...],
-                 activation: Optional[str] = 'relu',
+                 activation: Optional[str] = 'ReLU',
                  n_observed_particles=200,
                  ):
         self.simulator = simulator
@@ -134,7 +134,7 @@ class MLP:
                     act = ti.max(act, 0.)
                 elif ti.static(activation == 'Tanh'):
                     act = ti.tanh(act)
-                elif ti.static(activation == 'leakyReLU'):
+                elif ti.static(activation == 'LeakyReLU'):
                     if act < 0:
                         act *= 0.01
 
