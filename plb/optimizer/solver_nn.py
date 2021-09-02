@@ -1,9 +1,10 @@
 from .solver import *
-from plb.algorithms.logger import Logger
+
+# from plb.engine.nn.mlp import MLP
 
 
 class SolverNN:
-    def __init__(self, env: TaichiEnv, logger, cfg=None, **kwargs):
+    def __init__(self, env: TaichiEnv, nn, logger, cfg=None, **kwargs):
         self.cfg = make_cls_config(self, cfg, **kwargs)
         self.cfg.optim.lr *= 0.001
         self.cfg.optim.bounds = (-np.inf, np.inf)
@@ -12,12 +13,16 @@ class SolverNN:
         self.optim_cfg = self.cfg.optim
         self.horizon = self.cfg.horizon
         self.env = env
+        # self.nn = MLP(self.env.simulator, self.env.primitives,
+        #               (256, 256), activation='relu')
+        self.nn = nn
 
     def solve(self, callbacks=()):
         env = self.env
-        assert hasattr(env, 'nn'), "nn must be an element of env .."
+        # assert hasattr(env, 'nn'), "nn must be an element of env .."
 
-        nn = env.nn  # assume that nn has been initialized.. nn.initialize
+        # nn = env.nn  # assume that nn has been initialized.. nn.initialize
+        nn = self.nn
 
         # initialize ...
         params = nn.get_params()
@@ -43,7 +48,8 @@ class SolverNN:
                     self.logger.step(
                         None, None, loss_info['reward'], None, (i == self.horizon-1), loss_info)
             loss = env.loss.loss[None]
-            return loss, env.nn.get_grad()
+            # return loss, env.nn.get_grad()
+            return loss, nn.get_grad()
 
         best_action = None
         best_loss = 1e10
@@ -75,13 +81,14 @@ class SolverNN:
         return cfg
 
 
-def solve_nn(env, path, logger, args):
+def solve_nn(env, taichi_nn, args):
     import os
     import cv2
     import imageio
     import torch
     from torch import nn
-    exp_name = f'nn_{args.env_name}'
+
+    exp_name = f'test_nn_{args.env_name}'
     path = f'data/{exp_name}/{exp_name}_s{args.seed}'
     os.makedirs(path, exist_ok=True)
     logger = Logger(path)
@@ -99,7 +106,8 @@ def solve_nn(env, path, logger, args):
             return self.l3(x)
 
     T = env._max_episode_steps
-    mlp = MLP(env.observation_space.shape[0], env.action_space.shape[0])
+    mlp = MLP(
+        env.unwrapped.observation_space.shape[0], env.unwrapped.action_space.shape[0])
 
     params = []
     for i in mlp.parameters():
@@ -110,18 +118,21 @@ def solve_nn(env, path, logger, args):
     env.reset()
 
     taichi_env = env.unwrapped.taichi_env
-    solver = SolverNN(taichi_env, logger, None,
+    solver = SolverNN(taichi_env, taichi_nn, logger, None,
                       n_iters=(args.num_steps + T-1)//T, softness=args.softness, horizon=T,
                       **{"optim.lr": args.lr, "optim.type": args.optim, "init_range": 0.0001})
 
-    nn = taichi_env.nn
+    # nn = taichi_env.nn
+    # nn = solver.nn
+    nn = taichi_nn
     nn.set_params(params)
     p2 = nn.get_params()
     assert np.abs(p2 - params).max() < 1e-9
     print("Initialize", p2.sum(), params.sum())
 
     params = solver.solve()
-    taichi_env.nn.set_params(params)
+    # taichi_env.nn.set_params(params)
+    nn.set_params(params)
     os.makedirs(path, exist_ok=True)
     taichi_env.set_copy(True)
 
