@@ -81,10 +81,13 @@ def solve_nn(env, path, logger, args):
     import imageio
     import torch
     from torch import nn
-    exp_name = f'nn_{args.env_name}'
+
+    T = env._max_episode_steps
+    af = 'ReLU'
+    exp_name = f'nn_{args.env_name}_horizon-{T}_af-{af}'
     path = f'data/{exp_name}/{exp_name}_s{args.seed}'
     os.makedirs(path, exist_ok=True)
-    logger = Logger(path)
+    logger = Logger(path, exp_name)
 
     class MLP(nn.Module):
         def __init__(self, inp_dim, oup_dim):
@@ -98,7 +101,6 @@ def solve_nn(env, path, logger, args):
             x = torch.relu(self.l2(x))
             return self.l3(x)
 
-    T = env._max_episode_steps
     mlp = MLP(env.observation_space.shape[0], env.action_space.shape[0])
 
     params = []
@@ -111,7 +113,8 @@ def solve_nn(env, path, logger, args):
 
     taichi_env = env.unwrapped.taichi_env
     solver = SolverNN(taichi_env, logger, None,
-                      n_iters=(args.num_steps + T-1)//T, softness=args.softness, horizon=T,
+                      n_iters=200,
+                      softness=args.softness, horizon=T,
                       **{"optim.lr": args.lr, "optim.type": args.optim, "init_range": 0.0001})
 
     nn = taichi_env.nn
