@@ -1,35 +1,38 @@
 """
 Neural network implemented with Taichi
 """
+from ..primitive.primitives import Primitives, Chopsticks
+from ..mpm_simulator import MPMSimulator
+from ...config.utils import CfgNode as CN
 from typing import Tuple, Optional
 import numpy as np
 import taichi as ti
-from ...config.utils import CfgNode as CN
-from ..mpm_simulator import MPMSimulator
-from ..primitive.primitives import Primitives, Chopsticks
+
 
 @ti.data_oriented
 class MLP:
     """
     A simple MLP network
     """
+
     def __init__(self,
                  simulator: MPMSimulator,
                  primitives: Primitives,
                  hidden_dims: Tuple[int, ...],
-                 activation: Optional[str]='relu',
+                 activation: Optional[str] = 'ReLU',
                  n_observed_particles=200,
                  ):
         self.simulator = simulator
         self.primitives = primitives
-        #TODO: several env is not supported...
+        # TODO: several env is not supported...
         for i in self.primitives.primitives:
-            assert not isinstance(i, Chopsticks), "Chopstick is not supported now.."
+            assert not isinstance(
+                i, Chopsticks), "Chopstick is not supported now.."
         dtype = self.simulator.dtype
 
         self.n_observed_particles = n_observed_particles
         n_particle = self.simulator.n_particles
-        self.obs_step = (n_particle// self.n_observed_particles)
+        self.obs_step = (n_particle // self.n_observed_particles)
         self.obs_num = n_particle//self.obs_step
         inp_dim = self.obs_num * 6 + primitives.state_dim
 
@@ -41,23 +44,29 @@ class MLP:
 
         self.dims = dims
         self.n_layer = len(dims) - 1
-        self.velocity_weight = ti.field(dtype, shape=(), needs_grad=False)  # record min distance to the point cloud..
-        self.hidden = [ti.field(dtype=dtype, shape=(max_steps, dims[0]), needs_grad=True)]
+        # record min distance to the point cloud..
+        self.velocity_weight = ti.field(dtype, shape=(), needs_grad=False)
+        self.hidden = [ti.field(dtype=dtype, shape=(
+            max_steps, dims[0]), needs_grad=True)]
         self.hidden_prev = [None]
         self.W = []
         self.b = []
         for i in range(self.n_layer):
-            self.W.append(ti.field(dtype=dtype, shape=(dims[i+1], dims[i]), needs_grad=True))
-            self.b.append(ti.field(dtype=dtype, shape=(dims[i+1],), needs_grad=True))
-            self.hidden_prev.append(ti.field(dtype=dtype, shape=(max_steps, dims[i+1]), needs_grad=True))
-            self.hidden.append(ti.field(dtype=dtype, shape=(max_steps, dims[i+1]), needs_grad=True))
+            self.W.append(ti.field(dtype=dtype, shape=(
+                dims[i+1], dims[i]), needs_grad=True))
+            self.b.append(
+                ti.field(dtype=dtype, shape=(dims[i+1],), needs_grad=True))
+            self.hidden_prev.append(
+                ti.field(dtype=dtype, shape=(max_steps, dims[i+1]), needs_grad=True))
+            self.hidden.append(ti.field(dtype=dtype, shape=(
+                max_steps, dims[i+1]), needs_grad=True))
 
         self.max_timesteps = max_steps
         self.kernels = self.input_kernels()
 
         for i in range(self.n_layer):
             self.kernels += self.create_forward_kernels(i, activation
-                    if i!=self.n_layer-1 else None)
+                                                        if i != self.n_layer-1 else None)
         self.kernels += self.output_kernels()
 
     def input_kernels(self):
@@ -71,7 +80,8 @@ class MLP:
                 for j in ti.static(range(3)):
                     h[t, i*6+j] = x[t*self.substeps, i * self.obs_step][j]
                 for j in ti.static(range(3)):
-                    h[t, i*6+j+3] = v[t*self.substeps, i * self.obs_step][j] * self.velocity_weight[None]
+                    h[t, i*6+j+3] = v[t*self.substeps, i *
+                                      self.obs_step][j] * self.velocity_weight[None]
 
         base = self.obs_num * 6
 
@@ -88,14 +98,16 @@ class MLP:
 
     def output_kernels(self):
         h = self.hidden[-1]
+
         @ti.kernel
         def set_action(t: ti.i32):
             cur = 0
             for i in ti.static(range(len(self.primitives))):
                 p = self.primitives[i]
-                if ti.static(p.action_dim>0):
+                if ti.static(p.action_dim > 0):
                     for j in ti.static(range(p.action_dim)):
-                        p.action_buffer[t][j] = ti.max(ti.min(h[t, cur+j], 1.), -1.)
+                        p.action_buffer[t][j] = ti.max(
+                            ti.min(h[t, cur+j], 1.), -1.)
                     cur += p.action_dim
         return [set_action]
 
@@ -118,14 +130,17 @@ class MLP:
         def bias(t: ti.i32):
             for i in range(d1):
                 act = h1_prev[t, i] + b[i]
-                if ti.static(activation == 'relu'):
+                if ti.static(activation == 'ReLU'):
                     act = ti.max(act, 0.)
-                if ti.static(activation == 'tanh'):
+                elif ti.static(activation == 'Tanh'):
                     act = ti.tanh(act)
+                elif ti.static(activation == 'LeakyReLU'):
+                    if act < 0:
+                        act *= 0.01
+
                 h1[t, i] = act
 
         return [weights, bias]
-
 
     @ti.kernel
     def clear_kernel(self, t: ti.i32):
@@ -136,6 +151,7 @@ class MLP:
     @ti.complex_kernel
     def clear_no_grad(self, t):
         self.clear_kernel(t)
+
     @ti.complex_kernel_grad(clear_no_grad)
     def clear_no_grad_grad(self, t):
         pass
@@ -154,15 +170,15 @@ class MLP:
     def get_grad(self):
         outs = []
         for i in range(self.n_layer):
-            outs+=[self.W[i].grad.to_numpy().reshape(-1),
-                        self.b[i].grad.to_numpy().reshape(-1)]
+            outs += [self.W[i].grad.to_numpy().reshape(-1),
+                     self.b[i].grad.to_numpy().reshape(-1)]
         return np.concatenate(outs)
 
     def get_params(self):
         outs = []
         for i in range(self.n_layer):
             outs += [self.W[i].to_numpy().reshape(-1),
-                   self.b[i].to_numpy().reshape(-1)]
+                     self.b[i].to_numpy().reshape(-1)]
         return np.concatenate(outs)
 
     def set_params(self, param):
@@ -180,4 +196,3 @@ class MLP:
         else:
             self.velocity_weight[None] = 1.
             assert len(param) == 0
-

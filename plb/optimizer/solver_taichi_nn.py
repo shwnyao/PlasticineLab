@@ -1,21 +1,20 @@
 from .solver import *
 
-class SolverNN:
-    def __init__(self, env: TaichiEnv, logger, cfg=None, **kwargs):
+
+class SolverTaichiNN:
+    def __init__(self, env: TaichiEnv, nn, logger, cfg=None, **kwargs):
         self.cfg = make_cls_config(self, cfg, **kwargs)
-        self.cfg.optim.lr *= 0.001
         self.cfg.optim.bounds = (-np.inf, np.inf)
         print(self.cfg.optim)
         self.logger = logger
         self.optim_cfg = self.cfg.optim
         self.horizon = self.cfg.horizon
         self.env = env
+        self.nn = nn
 
     def solve(self, callbacks=()):
         env = self.env
-        assert hasattr(env, 'nn'), "nn must be an element of env .."
-
-        nn = env.nn # assume that nn has been initialized.. nn.initialize
+        nn = self.nn
 
         # initialize ...
         params = nn.get_params()
@@ -38,9 +37,10 @@ class SolverNN:
                     env.step()
                     self.total_steps += 1
                     loss_info = env.compute_loss()
-                    self.logger.step(None, None, loss_info['reward'], None, (i==self.horizon-1), loss_info)
+                    self.logger.step(
+                        None, None, loss_info['reward'], None, (i == self.horizon-1), loss_info)
             loss = env.loss.loss[None]
-            return loss, env.nn.get_grad()
+            return loss, nn.get_grad()
 
         best_action = None
         best_loss = 1e10
@@ -48,6 +48,7 @@ class SolverNN:
         for iter in range(self.cfg.n_iters):
             self.params = params
             loss, grad = forward(env_state['state'], params)
+            self.logger.summary_writer.writer.add_histogram('grad', grad, iter)
             if loss < best_loss:
                 best_loss = loss
                 best_action = params.copy()
@@ -70,11 +71,19 @@ class SolverNN:
         cfg.init_sampler = 'uniform'
         return cfg
 
-def solve_nn(env, path, logger, args):
-    import os, cv2
+
+def solve_taichi_nn(env, taichi_nn, args):
+    import os
+    import cv2
+    import imageio
     import torch
     from torch import nn
+
+    T = env._max_episode_steps
+    exp_name = f'taichi-nn_{args.env_name}_horizon-{T}_af-{args.af}'
+    path = f'data/{exp_name}/{exp_name}_s{args.seed}'
     os.makedirs(path, exist_ok=True)
+    logger = Logger(path, exp_name)
 
     class MLP(nn.Module):
         def __init__(self, inp_dim, oup_dim):
@@ -88,8 +97,8 @@ def solve_nn(env, path, logger, args):
             x = torch.relu(self.l2(x))
             return self.l3(x)
 
-    T = env._max_episode_steps
-    mlp = MLP(env.observation_space.shape[0], env.action_space.shape[0])
+    mlp = MLP(
+        env.unwrapped.observation_space.shape[0], env.unwrapped.action_space.shape[0])
 
     params = []
     for i in mlp.parameters():
@@ -100,24 +109,26 @@ def solve_nn(env, path, logger, args):
     env.reset()
 
     taichi_env = env.unwrapped.taichi_env
-    solver = SolverNN(taichi_env, logger, None,
-                      n_iters=(args.num_steps + T-1)//T, softness=args.softness, horizon=T,
-                      **{"optim.lr": args.lr, "optim.type": args.optim, "init_range": 0.0001})
+    solver = SolverTaichiNN(taichi_env, taichi_nn, logger, None,
+                            n_iters=200,
+                            softness=args.softness, horizon=T,
+                            **{"optim.lr": args.lr, "optim.type": args.optim, "init_range": 0.0001})
 
-
-    nn = taichi_env.nn
+    nn = taichi_nn
     nn.set_params(params)
     p2 = nn.get_params()
     assert np.abs(p2 - params).max() < 1e-9
     print("Initialize", p2.sum(), params.sum())
 
     params = solver.solve()
-    taichi_env.nn.set_params(params)
+    nn.set_params(params)
     os.makedirs(path, exist_ok=True)
     taichi_env.set_copy(True)
 
-    for idx in range(50):
-        nn.set_action(0, taichi_env.simulator.substeps)
-        taichi_env.step(None)
-        img = taichi_env.render(mode='rgb_array')
-        cv2.imwrite(f"{path}/{idx:04d}.png", img)
+    with imageio.get_writer(f"{path}/output.gif", mode="I") as writer:
+        for idx in range(50):
+            nn.set_action(0, taichi_env.simulator.substeps)
+            taichi_env.step(None)
+            img = taichi_env.render(mode='rgb_array')
+            img = cv2.resize(img, (0, 0), fx=0.5, fy=0.5)
+            writer.append_data(img)

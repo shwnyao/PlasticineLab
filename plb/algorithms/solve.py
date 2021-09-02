@@ -4,16 +4,18 @@ import numpy as np
 import torch
 
 from plb.envs import make
+from plb.engine.nn.mlp import MLP
 from plb.algorithms.logger import Logger
 
 from plb.algorithms.discor.run_sac import train as train_sac
 from plb.algorithms.ppo.run_ppo import train_ppo
 from plb.algorithms.TD3.run_td3 import train_td3
 from plb.optimizer.solver import solve_action
-from plb.optimizer.solver_nn import solve_nn
+from plb.optimizer.solver_taichi_nn import solve_taichi_nn
 
 RL_ALGOS = ['sac', 'td3', 'ppo']
-DIFF_ALGOS = ['action', 'nn']
+DIFF_ALGOS = ['action', 'taichi_nn']
+
 
 def set_random_seed(seed):
     random.seed(seed)
@@ -21,8 +23,9 @@ def set_random_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
+
 def get_args():
-    parser=argparse.ArgumentParser()
+    parser = argparse.ArgumentParser()
     parser.add_argument("--algo", type=str, default=DIFF_ALGOS + RL_ALGOS)
     parser.add_argument("--env_name", type=str, default="Move-v1")
     parser.add_argument("--path", type=str, default='./tmp')
@@ -35,13 +38,15 @@ def get_args():
     parser.add_argument("--num_steps", type=int, default=None)
 
     # differentiable physics parameters
-    parser.add_argument("--lr", type=float, default=0.1)
+    parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--softness", type=float, default=666.)
-    parser.add_argument("--optim", type=str, default='Adam', choices=['Adam', 'Momentum'])
+    parser.add_argument("--optim", type=str, default='Adam',
+                        choices=['Adam', 'Momentum'])
 
-    args=parser.parse_args()
+    args = parser.parse_args()
 
     return args
+
 
 def main():
     args = get_args()
@@ -54,10 +59,14 @@ def main():
     logger = Logger(args.path)
     set_random_seed(args.seed)
 
-    env = make(args.env_name, nn=(args.algo=='nn'), sdf_loss=args.sdf_loss,
-                            density_loss=args.density_loss, contact_loss=args.contact_loss,
-                            soft_contact_loss=args.soft_contact_loss)
-    env.seed(args.seed)
+    env = make(args.env_name)
+
+    taichi_env = env.unwrapped.taichi_env
+    taichi_nn = MLP(taichi_env.simulator, taichi_env.primitives,
+                    (256, 256), activation='relu')
+
+    env.initialize(args.seed, sdf_loss=args.sdf_loss, density_loss=args.density_loss,
+                   contact_loss=args.contact_loss, is_soft_contact=args.soft_contact_loss)
 
     if args.algo == 'sac':
         train_sac(env, args.path, logger, args)
@@ -67,10 +76,11 @@ def main():
         train_ppo(env, args.path, logger, args)
     elif args.algo == 'td3':
         train_td3(env, args.path, logger, args)
-    elif args.algo == 'nn':
-        solve_nn(env, args.path, logger, args)
+    elif args.algo == 'taichi_nn':
+        solve_taichi_nn(env, taichi_nn, args)
     else:
         raise NotImplementedError
+
 
 if __name__ == '__main__':
     main()

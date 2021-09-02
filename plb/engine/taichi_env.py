@@ -5,9 +5,10 @@ import taichi as ti
 # TODO: run on GPU, fast_math will cause error on float64's sqrt; removing it cuases compile error..
 ti.init(arch=ti.gpu, debug=False, fast_math=True)
 
+
 @ti.data_oriented
 class TaichiEnv:
-    def __init__(self, cfg, nn=False, loss=True):
+    def __init__(self, cfg, loss=True):
         """
         A taichi env builds scene according the configuration and the set of manipulators
         """
@@ -31,9 +32,6 @@ class TaichiEnv:
         self.simulator = MPMSimulator(cfg.SIMULATOR, self.primitives)
         self.renderer = Renderer(cfg.RENDERER, self.primitives)
 
-        if nn:
-            self.nn = MLP(self.simulator, self.primitives, (256, 256))
-
         if loss:
             self.loss = Loss(cfg.ENV.loss, self.simulator)
         else:
@@ -41,7 +39,7 @@ class TaichiEnv:
         self._is_copy = True
 
     def set_copy(self, is_copy: bool):
-        self._is_copy= is_copy
+        self._is_copy = is_copy
 
     def initialize(self):
         # initialize all taichi variable according to configurations..
@@ -50,7 +48,8 @@ class TaichiEnv:
         self.renderer.initialize()
         if self.loss:
             self.loss.initialize()
-            self.renderer.set_target_density(self.loss.target_density.to_numpy()/self.simulator.p_mass)
+            self.renderer.set_target_density(
+                self.loss.target_density.to_numpy()/self.simulator.p_mass)
 
         # call set_state instead of reset..
         self.simulator.reset(self.init_particles)
