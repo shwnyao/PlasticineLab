@@ -4,7 +4,6 @@ from .solver import *
 class SolverTaichiNN:
     def __init__(self, env: TaichiEnv, nn, logger, cfg=None, **kwargs):
         self.cfg = make_cls_config(self, cfg, **kwargs)
-        self.cfg.optim.lr *= 0.001
         self.cfg.optim.bounds = (-np.inf, np.inf)
         print(self.cfg.optim)
         self.logger = logger
@@ -15,9 +14,6 @@ class SolverTaichiNN:
 
     def solve(self, callbacks=()):
         env = self.env
-        # assert hasattr(env, 'nn'), "nn must be an element of env .."
-
-        # nn = env.nn  # assume that nn has been initialized.. nn.initialize
         nn = self.nn
 
         # initialize ...
@@ -44,7 +40,6 @@ class SolverTaichiNN:
                     self.logger.step(
                         None, None, loss_info['reward'], None, (i == self.horizon-1), loss_info)
             loss = env.loss.loss[None]
-            # return loss, env.nn.get_grad()
             return loss, nn.get_grad()
 
         best_action = None
