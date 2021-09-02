@@ -88,7 +88,7 @@ def solve_nn(env, taichi_nn, args):
     import torch
     from torch import nn
 
-    exp_name = f'test_nn_{args.env_name}'
+    exp_name = f'taichi-nn_{args.env_name}'
     path = f'data/{exp_name}/{exp_name}_s{args.seed}'
     os.makedirs(path, exist_ok=True)
     logger = Logger(path)
@@ -122,8 +122,6 @@ def solve_nn(env, taichi_nn, args):
                       n_iters=(args.num_steps + T-1)//T, softness=args.softness, horizon=T,
                       **{"optim.lr": args.lr, "optim.type": args.optim, "init_range": 0.0001})
 
-    # nn = taichi_env.nn
-    # nn = solver.nn
     nn = taichi_nn
     nn.set_params(params)
     p2 = nn.get_params()
@@ -131,7 +129,6 @@ def solve_nn(env, taichi_nn, args):
     print("Initialize", p2.sum(), params.sum())
 
     params = solver.solve()
-    # taichi_env.nn.set_params(params)
     nn.set_params(params)
     os.makedirs(path, exist_ok=True)
     taichi_env.set_copy(True)

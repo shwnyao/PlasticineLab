@@ -14,7 +14,7 @@ from plb.optimizer.solver import solve_action
 from plb.optimizer.solver_nn import solve_nn
 
 RL_ALGOS = ['sac', 'td3', 'ppo']
-DIFF_ALGOS = ['action', 'nn']
+DIFF_ALGOS = ['action', 'taichi_nn']
 
 
 def set_random_seed(seed):
@@ -59,15 +59,14 @@ def main():
     logger = Logger(args.path)
     set_random_seed(args.seed)
 
-    env = make(args.env_name, nn=(args.algo == 'nn'), sdf_loss=args.sdf_loss,
-               density_loss=args.density_loss, contact_loss=args.contact_loss,
-               soft_contact_loss=args.soft_contact_loss)
+    env = make(args.env_name)
 
     taichi_env = env.unwrapped.taichi_env
-    nn = MLP(taichi_env.simulator, taichi_env.primitives,
-             (256, 256), activation='relu')
+    taichi_nn = MLP(taichi_env.simulator, taichi_env.primitives,
+                    (256, 256), activation='relu')
 
-    env.initialize(args.seed)
+    env.initialize(args.seed, sdf_loss=args.sdf_loss, density_loss=args.density_loss,
+                   contact_loss=args.contact_loss, is_soft_contact=args.soft_contact_loss)
 
     if args.algo == 'sac':
         train_sac(env, args.path, logger, args)
@@ -77,8 +76,8 @@ def main():
         train_ppo(env, args.path, logger, args)
     elif args.algo == 'td3':
         train_td3(env, args.path, logger, args)
-    elif args.algo == 'nn':
-        solve_nn(env, nn, args)
+    elif args.algo == 'taichi_nn':
+        solve_nn(env, taichi_nn, args)
     else:
         raise NotImplementedError
 

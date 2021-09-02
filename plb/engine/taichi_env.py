@@ -8,7 +8,7 @@ ti.init(arch=ti.gpu, debug=False, fast_math=True)
 
 @ti.data_oriented
 class TaichiEnv:
-    def __init__(self, cfg, nn=False, loss=True):
+    def __init__(self, cfg, loss=True):
         """
         A taichi env builds scene according the configuration and the set of manipulators
         """
@@ -31,10 +31,6 @@ class TaichiEnv:
 
         self.simulator = MPMSimulator(cfg.SIMULATOR, self.primitives)
         self.renderer = Renderer(cfg.RENDERER, self.primitives)
-
-        # if nn:
-        #     self.nn = MLP(self.simulator, self.primitives,
-        #                   (256, 256), activation='relu')
 
         if loss:
             self.loss = Loss(cfg.ENV.loss, self.simulator)

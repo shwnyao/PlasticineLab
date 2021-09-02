@@ -11,21 +11,14 @@ PATH = os.path.dirname(os.path.abspath(__file__))
 
 
 class PlasticineEnv(gym.Env):
-    def __init__(self, cfg_path, version, nn=False, sdf_loss=10, density_loss=10, contact_loss=1, is_soft_contact=False):
+    def __init__(self, cfg_path, version):
         from ..engine.taichi_env import TaichiEnv
         self.cfg_path = cfg_path
         cfg = self.load_varaints(cfg_path, version)
         self.cfg = cfg.ENV
-        self.taichi_env = TaichiEnv(cfg, nn)  # build taichi environment
+        self.taichi_env = TaichiEnv(cfg)  # build taichi environment
 
-        self.loss_config = {
-            'sdf_loss': sdf_loss,
-            'density_loss': density_loss,
-            'contact_loss': contact_loss,
-            'is_soft_contact': is_soft_contact
-        }
-
-    def initialize(self, seed):
+    def initialize(self, seed, sdf_loss=10, density_loss=10, contact_loss=1, is_soft_contact=False):
         self.taichi_env.initialize()
         self.taichi_env.set_copy(True)
         self._init_state = self.taichi_env.get_state()
@@ -36,8 +29,8 @@ class PlasticineEnv(gym.Env):
         self.action_space = Box(-1, 1,
                                 (self.taichi_env.primitives.action_dim,))
 
-        self.taichi_env.loss.set_weights(sdf=self.loss_config['sdf_loss'], density=self.loss_config['density_loss'],
-                                         contact=self.loss_config['contact_loss'], is_soft_contact=self.loss_config['is_soft_contact'])
+        self.taichi_env.loss.set_weights(sdf=sdf_loss, density=density_loss,
+                                         contact=contact_loss, is_soft_contact=is_soft_contact)
         self.seed(seed)
 
     def reset(self):
