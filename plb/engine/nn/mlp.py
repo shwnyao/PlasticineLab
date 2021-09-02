@@ -19,7 +19,7 @@ class MLP:
                  simulator: MPMSimulator,
                  primitives: Primitives,
                  hidden_dims: Tuple[int, ...],
-                 activation: Optional[str] = 'relu',
+                 activation: Optional[str] = 'ReLU',
                  n_observed_particles=200,
                  ):
         self.simulator = simulator
@@ -130,11 +130,11 @@ class MLP:
         def bias(t: ti.i32):
             for i in range(d1):
                 act = h1_prev[t, i] + b[i]
-                if ti.static(activation == 'relu'):
+                if ti.static(activation == 'ReLU'):
                     act = ti.max(act, 0.)
-                elif ti.static(activation == 'tanh'):
+                elif ti.static(activation == 'Tanh'):
                     act = ti.tanh(act)
-                elif ti.static(activation == 'leaky_relu'):
+                elif ti.static(activation == 'LeakyReLU'):
                     if act < 0:
                         act *= 0.01
 
